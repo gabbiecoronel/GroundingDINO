@@ -1,3 +1,15 @@
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# ML model weights
+*.pth
+weights/
+
+# Outputs / temporary files
+outputs/
+
 # IDE
 .idea/
 .vscode/

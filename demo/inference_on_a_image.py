@@ -13,7 +13,6 @@ from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 from groundingdino.util.vl_utils import create_positive_map_from_span
 
-
 def plot_boxes_to_image(image_pil, tgt):
     H, W = tgt["size"]
     boxes = tgt["boxes"]
@@ -54,7 +53,6 @@ def plot_boxes_to_image(image_pil, tgt):
 
     return image_pil, mask
 
-
 def load_image(image_path):
     # load image
     image_pil = Image.open(image_path).convert("RGB")  # load image
@@ -69,7 +67,6 @@ def load_image(image_path):
     image, _ = transform(image_pil, None)  # 3, h, w
     return image_pil, image
 
-
 def load_model(model_config_path, model_checkpoint_path, cpu_only=False):
     args = SLConfig.fromfile(model_config_path)
     args.device = "cuda" if not cpu_only else "cpu"
@@ -80,14 +77,14 @@ def load_model(model_config_path, model_checkpoint_path, cpu_only=False):
     _ = model.eval()
     return model
 
-
 def get_grounding_output(model, image, caption, box_threshold, text_threshold=None, with_logits=True, cpu_only=False, token_spans=None):
     assert text_threshold is not None or token_spans is not None, "text_threshould and token_spans should not be None at the same time!"
     caption = caption.lower()
     caption = caption.strip()
     if not caption.endswith("."):
         caption = caption + "."
-    device = "cuda" if not cpu_only else "cpu"
+    #device = "cuda" if not cpu_only else "cpu"
+    device = "cuda" if torch.cuda.is_available() and not cpu_only else "cpu"
     model = model.to(device)
     image = image.to(device)
     with torch.no_grad():
@@ -142,25 +139,23 @@ def get_grounding_output(model, image, caption, box_threshold, text_threshold=No
         boxes_filt = torch.cat(all_boxes, dim=0).cpu()
         pred_phrases = all_phrases
 
-
     return boxes_filt, pred_phrases
-
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("Grounding DINO example", add_help=True)
-    parser.add_argument("--config_file", "-c", type=str, required=True, help="path to config file")
+    parser.add_argument("--config_file", "-c", type=str, default="/Users/gabbiecoronel/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py",help="path to config file")
     parser.add_argument(
-        "--checkpoint_path", "-p", type=str, required=True, help="path to checkpoint file"
+        "--checkpoint_path", "-p", type=str, default="/Users/gabbiecoronel/GroundingDINO/weights/groundingdino_swint_ogc.pth", help="path to checkpoint file"
     )
-    parser.add_argument("--image_path", "-i", type=str, required=True, help="path to image file")
-    parser.add_argument("--text_prompt", "-t", type=str, required=True, help="text prompt")
+    parser.add_argument("--image_path", "-i", nargs="+", type=str, default=["/Users/gabbiecoronel/GroundingDINO/groundingdino/images/Cats.webp"], help="path to image file")
+    parser.add_argument("--text_prompt", "-t", nargs="+", type=str, default=["Cat"], help="text prompt")
     parser.add_argument(
-        "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
+        "--output_dir", "-o", type=str, default="/Users/gabbiecoronel/GroundingDINO/groundingdino/outputs", help="output directory"
     )
 
-    parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")
-    parser.add_argument("--text_threshold", type=float, default=0.25, help="text threshold")
+    parser.add_argument("--box_threshold", type=float, default=0.4, help="box threshold")
+    parser.add_argument("--text_threshold", type=float, default=0.4, help="text threshold")
     parser.add_argument("--token_spans", type=str, default=None, help=
                         "The positions of start and end positions of phrases of interest. \
                         For example, a caption is 'a cat and a dog', \
@@ -181,25 +176,21 @@ if __name__ == "__main__":
     text_threshold = args.text_threshold
     token_spans = args.token_spans
 
-    # make dir
-    os.makedirs(output_dir, exist_ok=True)
-    # load image
-    image_pil, image = load_image(image_path)
     # load model
     model = load_model(config_file, checkpoint_path, cpu_only=args.cpu_only)
+    # make dir
+    os.makedirs(output_dir, exist_ok=True)
+    
+    for image_path, text_prompt in zip(args.image_path, args.text_prompt):
+        image_name = os.path.basename(image_path)
+        image_pil, image = load_image(image_path)
 
     # visualize raw image
-    image_pil.save(os.path.join(output_dir, "raw_image.jpg"))
-
-    # set the text_threshold to None if token_spans is set.
-    if token_spans is not None:
-        text_threshold = None
-        print("Using token_spans. Set the text_threshold to None.")
-
-
+    image_pil.save(os.path.join(output_dir, f"{image_name}_raw.jpg"))
+        
     # run model
     boxes_filt, pred_phrases = get_grounding_output(
-        model, image, text_prompt, box_threshold, text_threshold, cpu_only=args.cpu_only, token_spans=eval(f"{token_spans}")
+        model, image, text_prompt, box_threshold, text_threshold, cpu_only=args.cpu_only, token_spans=None
     )
 
     # visualize pred
@@ -209,6 +200,8 @@ if __name__ == "__main__":
         "size": [size[1], size[0]],  # H,W
         "labels": pred_phrases,
     }
-    # import ipdb; ipdb.set_trace()
+    
+    # image prediction output with boxes
     image_with_box = plot_boxes_to_image(image_pil, pred_dict)[0]
-    image_with_box.save(os.path.join(output_dir, "pred.jpg"))
+    output_path = os.path.join(args.output_dir, f"{image_name}_pred.jpg")
+    image_with_box.save(output_path)
